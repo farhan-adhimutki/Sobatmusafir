@@ -1,0 +1,24 @@
+SobatMusafir Jambi — PANDUAN UKURAN GAMBAR
+=========================================
+Cara mengganti foto: timpa file di folder ini dengan foto asli memakai NAMA FILE YANG SAMA.
+Format: JPG (kualitas 75–80%), usahakan < 400 KB per foto (banner/hero < 700 KB).
+Semua bingkai memotong foto dari TENGAH, jadi letakkan objek utama di tengah.
+Jika sebuah file dihapus/tidak ada, situs otomatis menampilkan ilustrasi pengganti.
+
+JENIS BINGKAI          RASIO   UKURAN FILE     DIPAKAI DI
+---------------------  ------  --------------  ------------------------------------------------
+Hero beranda (desktop) 12:5    2400 x 1000 px  hero/beranda.jpg           (layar > 600 px)
+Hero beranda (HP)      4:5     1080 x 1350 px  hero/beranda-mobile.jpg    (layar <= 600 px)
+Banner detail          12:5    2400 x 1000 px  wisata|kuliner|umkm/<nama>-banner.jpg (desktop/tablet)
+Kartu                  4:3     1200 x 900 px   wisata|kuliner|umkm|masjid|hotel/<nama>.jpg
+                                               (juga dipakai sebagai banner di HP & foto modal hotel)
+Fasilitas ibadah       2:1     1200 x 600 px   *-musholla.jpg, *-wudhu.jpg
+Galeri                 4:3     1200 x 900 px   wisata/*-galeri-N.jpg, masjid/*-ruang-sholat.jpg, masjid/*-wudhu.jpg
+Menu makanan/minuman   4:3     800 x 600 px    menu/<resto>-<menu>.jpg
+
+Catatan:
+- Banner 12:5 sangat lebar: subjek (gedung/candi/hidangan) taruh di tengah,
+  sisakan ruang di kiri-bawah karena judul halaman ditulis di atas area itu.
+- Folder hero/ sengaja kosong: selama beranda.jpg belum ada, beranda memakai
+  ilustrasi bergerak (matahari, awan, perahu, riak sungai).
+- Untuk menambah gambar baru, tulis path-nya di data.js (field img / banner / galeri).

@@ -1,6 +1,8 @@
 /* =========================================================
-   SobatMusafir Jambi — DATA KONTEN
-   Ubah / tambah konten di file ini saja; tampilan otomatis ikut.
+   SobatMusafir Jambi — DATA CADANGAN (OFFLINE)
+   Konten utama sekarang disimpan di DATABASE SUPABASE (project "sobatmusafir").
+   Ubah konten lewat Supabase Dashboard → Table Editor; website mengambilnya otomatis.
+   File ini hanya dipakai bila database tidak bisa dijangkau (mis. tanpa internet).
 
    GAMBAR — semua ada di folder img/ (lihat img/UKURAN-GAMBAR.txt):
      img/hero/     foto besar beranda        2400 x 1000 (12:5) + versi HP 1080 x 1350 (4:5)

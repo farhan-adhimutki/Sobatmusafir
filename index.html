@@ -146,6 +146,7 @@
     </div>
     <div class="wrap footer-bottom">
       <p>© <span id="year">2025</span> SobatMusafir Jambi. <span data-i18n="foot.copy">Hak Cipta Dilindungi Undang-Undang.</span></p>
+      <p class="small db-status" id="dbStatus" role="status"><span class="dot off"></span> Menghubungkan ke database…</p>
       <p class="muted small" data-i18n="foot.note">Foto pada situs ini masih ilustrasi pengganti. Data jadwal sholat dihitung otomatis.</p>
     </div>
   </footer>
@@ -162,6 +163,11 @@
 
   <button class="to-top" id="toTop" type="button" aria-label="Kembali ke atas"><svg><use href="#i-arrow"/></svg></button>
 
+  <!-- Supabase JS v2.119.0 (disimpan lokal di vendor/), konfigurasi, lapisan database -->
+  <script src="vendor/supabase-js-2.119.0.js"></script>
+  <script src="config.js"></script>
+  <script src="db.js"></script>
+  <!-- data.js = cadangan offline; konten utama diambil dari Supabase -->
   <script src="data.js"></script>
   <script src="script.js"></script>
 </body>

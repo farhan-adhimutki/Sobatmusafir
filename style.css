@@ -650,3 +650,8 @@ html.theme-fade * { transition: background-color .45s, color .45s, border-color 
   .media.skel { animation: none !important; }
 }
 .modal-x { position: absolute; }
+
+/* Status database & mode render tanpa animasi (pembaruan data di latar) */
+.db-status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+#app.no-anim .reveal, #app.no-anim .media-img { transition: none !important; }
+#authMsg { justify-self: start; white-space: normal; line-height: 1.4; padding: 8px 12px; }

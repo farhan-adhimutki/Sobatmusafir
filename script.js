@@ -931,6 +931,7 @@
       </section>
     </div>`;
 
+  V["proses-auth"] = () => `<div class="wrap band"><div class="empty" role="status">${ic("shield")}<p><b>Memeriksa sesi Anda…</b></p><span class="small">Mohon tunggu sebentar.</span></div></div>`;
   V.notfound = () => `<div class="wrap band"><div class="empty">${ic("info")}<p>Halaman tidak ditemukan.</p><a class="btn btn-primary" href="#beranda">${t("nav.home")}</a></div></div>`;
 
   /* =========================================================
@@ -939,7 +940,20 @@
   let lastHash = "";
   function route(opts = {}) {
     let h = (location.hash || "#beranda").slice(1) || "beranda";
-    if (/access_token=|error_description=|type=recovery|type=signup/.test(h)) h = "beranda"; // kembali dari tautan email Supabase
+    const AUTH = window.SM_AUTH;
+    // Kembali dari tautan email Supabase (token/eror di URL) → tunggu diproses auth/session.js
+    if (/access_token=|error_description=|error_code=|type=recovery|type=signup/.test(h) || (AUTH && AUTH.state.processing)) h = "proses-auth";
+    // Halaman khusus pengguna login: tunggu status sesi, lalu arahkan ke halaman Masuk bila belum login
+    if (guard.protected.has(h)) {
+      if (AUTH && !AUTH.state.ready) h = "proses-auth";
+      else if (!AUTH || !AUTH.state.user) {
+        try { sessionStorage.setItem("sm:next", "#" + h); } catch { /* abaikan */ }
+        location.replace("#masuk");
+        return;
+      }
+    }
+    // Halaman Masuk/Daftar tidak perlu dibuka lagi bila sudah login
+    if (guard.guestOnly.has(h) && AUTH && AUTH.state.ready && AUTH.state.user) { location.replace("#dashboard"); return; }
     const quiet = opts === true || opts.quiet === true;
     let view, arg, navKey, scrollTo;
     if (h.startsWith("tempat-")) { view = "tempat"; arg = h.slice(7); navKey = "guide"; }
@@ -947,7 +961,7 @@
     else if (h.startsWith("masjid-")) { view = "masjid"; arg = h.slice(7); navKey = "guide"; }
     else if (h.startsWith("tentang-")) { view = "tentang"; navKey = "tentang"; scrollTo = h; }
     else if (h === "kiblat") { view = "sholat"; navKey = "guide"; scrollTo = "kiblat"; }
-    else if (V[h] && !["tempat", "wisata", "notfound"].includes(h)) { view = h; navKey = ["kuliner", "masjid", "sholat", "hotel"].includes(h) ? "guide" : h; }
+    else if (V[h] && !["tempat", "wisata", "notfound"].includes(h)) { view = h; navKey = (guard.navKey && guard.navKey[h]) || (["kuliner", "masjid", "sholat", "hotel"].includes(h) ? "guide" : h); }
     else if (document.getElementById(h) && app.contains(document.getElementById(h))) { document.getElementById(h).scrollIntoView(); return; }
     else { view = "notfound"; }
 
@@ -975,6 +989,7 @@
       if (view === "masjid") drawMasjid(arg || D.masjid[0].id);
       if (view === "hotel") drawHotel();
       if (view === "rencana") drawPlan();
+      if (guard.after[view]) guard.after[view](arg);
       $$("[data-nav]").forEach((a) => a.classList.toggle("is-active", a.dataset.nav === navKey));
       closeMenu();
       document.title = (view === "beranda" ? "SobatMusafir Jambi" : ($("h1", app)?.textContent || "SobatMusafir") + " — SobatMusafir Jambi").slice(0, 80);
@@ -1044,7 +1059,7 @@
     const full = `${text}\n${url}`;
     try { if (navigator.share) { await navigator.share({ title, text, url }); return; } } catch (e) { if (e && e.name === "AbortError") return; }
     try { await navigator.clipboard.writeText(full); toast("Tautan & teks disalin ke clipboard."); return; } catch { /* lanjut ke modal */ }
-    openModal(`<h2 id="modalTitle">${t("share")}</h2><p class="muted" style="margin:8px 0 12px">Salin teks di bawah ini:</p><textarea class="textarea" readonly rows="8" onclick="this.select()">${esc(full)}</textarea>`);
+    openModal(`<h2 id="modalTitle">${t("share")}</h2><p class="muted" style="margin:8px 0 12px">Salin teks di bawah ini:</p><textarea class="textarea" readonly rows="8" data-select>${esc(full)}</textarea>`);
   }
   function planText() {
     sortPlan();
@@ -1057,7 +1072,7 @@
   function closeMenu() { $("#mainnav").classList.remove("open"); $("#menuBtn").setAttribute("aria-expanded", "false"); $$(".dd").forEach((d) => d.classList.remove("open")); }
 
   document.addEventListener("click", async (e) => {
-    const a = e.target.closest("[data-act],[data-close],[data-lang],[data-kcat],[data-kf],[data-mcat],[data-mcatf],[data-hf],[data-day],[data-radius],[data-fac],[data-tab],[data-hotel],[data-lightbox],[data-authtab],[data-scroll],.dd-btn,#menuBtn,#themeBtn,#loginBtn,#toTop");
+    const a = e.target.closest("[data-act],[data-close],[data-lang],[data-kcat],[data-kf],[data-mcat],[data-mcatf],[data-hf],[data-day],[data-radius],[data-fac],[data-tab],[data-hotel],[data-lightbox],[data-scroll],.dd-btn,#menuBtn,#themeBtn,#toTop");
     if (!e.target.closest(".dd")) $$(".dd").forEach((d) => d.classList.remove("open"));
     if (!a) return;
     const d = a.dataset;
@@ -1074,9 +1089,7 @@
       a.setAttribute("aria-label", S.theme === "dark" ? "Mode terang" : "Mode gelap");
       return;
     }
-    if (a.id === "loginBtn") return openAuth(S.user ? "akun" : "masuk");
-    if (d.authtab) return openAuth(d.authtab);
-    if (d.lang) { S.lang = d.lang; store.set("lang", S.lang); applyI18n(); renderAuthBtn(); route(); return; }
+    if (d.lang) { S.lang = d.lang; store.set("lang", S.lang); applyI18n(); window.SM_NAV?.render(); route(); return; }
     if (d.kcat) { KF.cat = d.kcat; $$("[data-kcat]").forEach((b) => b.setAttribute("aria-pressed", String(b === a))); return drawKuliner(); }
     if (d.kf) { KF[d.kf] = !KF[d.kf]; a.setAttribute("aria-pressed", String(KF[d.kf])); return drawKuliner(); }
     if (d.mcat) { menuCat = d.mcat; $$("[data-mcat]").forEach((b) => b.setAttribute("aria-pressed", String(b === a))); const p = D.tempat.find((x) => location.hash === "#tempat-" + x.id); if (p) $("#menuGrid").innerHTML = menuHTML(p); return; }
@@ -1266,25 +1279,12 @@
       }).catch((err) => {
         openModal(`<span class="brand-mark">${ic("info")}</span><h2 id="modalTitle" style="margin-top:12px">Belum terkirim</h2>
           <p class="muted" style="margin:8px 0 14px">${esc(DB.pesan(err))} Coba lagi nanti, atau salin ringkasan berikut dan kirimkan lewat kanal resmi SobatMusafir.</p>
-          <textarea class="textarea" readonly rows="7" onclick="this.select()">${esc(ringkas)}</textarea>`);
+          <textarea class="textarea" readonly rows="7" data-select>${esc(ringkas)}</textarea>`);
       }).finally(() => { btn.disabled = false; btn.innerHTML = `${ic("check")}Kirim Pendaftaran`; });
       return;
     }
-    if (f.id === "authForm") {
-      const mode = f.dataset.mode, email = f.email.value.trim(), pw = f.pw ? f.pw.value : "";
-      const msg = $("#authMsg"), btn = $("button[type=submit]", f);
-      const say = (txt, good) => { msg.hidden = false; msg.className = "chip " + (good ? "chip-solid" : "chip-amber"); msg.textContent = txt; replay(msg, "pop"); };
-      btn.disabled = true;
-      const job = mode === "daftar" ? DB.signUp(email, pw) : mode === "lupa" ? DB.resetPassword(email) : mode === "baru" ? DB.updatePassword(pw) : DB.signIn(email, pw);
-      job.then((r) => {
-        if (mode === "daftar" && r.needsConfirm) say("Akun dibuat. Cek email Anda dan klik tautan konfirmasi, lalu masuk.", true);
-        else if (mode === "lupa") say("Tautan atur ulang kata sandi sudah dikirim ke email Anda.", true);
-        else if (mode === "baru") { closeModal(); toast("Kata sandi baru tersimpan."); }
-        else { closeModal(); toast("Berhasil masuk. Favorit & itinerary kini tersimpan di akun Anda."); }
-      }).catch((err) => say(DB.pesan(err), false)).finally(() => { btn.disabled = false; });
-      return;
-    }
   });
+  document.addEventListener("focusin", (e) => { if (e.target.matches("textarea[data-select]")) e.target.select(); });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { if (!$("#modal").hidden) closeModal(); closeMenu(); }
     if (!$("#modal").hidden && $("#lb") && (e.key === "ArrowRight" || e.key === "ArrowLeft")) { e.preventDefault(); lbStep(e.key === "ArrowRight" ? 1 : -1); }
@@ -1479,14 +1479,20 @@
     }
   }
 
-  function renderAuthBtn() {
-    const b = $("#loginBtn"); if (!b) return;
-    const label = S.user ? (S.user.email || "Akun").split("@")[0] : t("nav.login");
-    b.innerHTML = `${ic(S.user ? "users" : "login")}<span>${esc(label.length > 14 ? label.slice(0, 13) + "…" : label)}</span>`;
-    b.setAttribute("aria-label", S.user ? "Akun saya" : t("nav.login"));
-  }
-  async function onLogin(user) {
-    S.user = user; renderAuthBtn();
+  /* Sinkron favorit & itinerary saat pengguna masuk/keluar (dipanggil oleh auth/session.js) */
+  async function setUser(user) {
+    const prev = S.user;
+    S.user = user || null;
+    if (!user) {
+      if (prev) {
+        // Bersihkan data pribadi dari perangkat setelah logout (tetap aman tersimpan di akun)
+        S.favs = []; store.set("favs", S.favs);
+        S.plan = structuredClone(D.itinerary); store.set("plan", null);
+      }
+      setSync("");
+      return;
+    }
+    if (prev && prev.id === user.id) return;
     try {
       const [remoteFavs, remotePlan] = await Promise.all([DB.getFavs(), DB.getPlan()]);
       const localOnly = S.favs.filter((id) => !remoteFavs.includes(id));
@@ -1498,52 +1504,35 @@
       route({ quiet: true });
     } catch (e) { setSync("gagal", e); }
   }
-  function openAuth(tab) {
-    if (tab === "akun" && S.user) {
-      return openModal(`<span class="brand-mark">${ic("users")}</span><h2 id="modalTitle" style="margin-top:12px">Akun saya</h2>
-        <div class="kv"><div><span>Email</span><b>${esc(S.user.email || "-")}</b></div><div><span>Favorit tersimpan</span><b>${S.favs.length} tempat</b></div><div><span>Titik itinerary</span><b>${S.plan.length} titik</b></div></div>
-        <p class="small muted" style="margin-top:12px">Favorit dan itinerary otomatis tersinkron ke database dan bisa dibuka dari perangkat lain setelah masuk.</p>
-        <div class="chips" style="margin-top:16px"><a class="btn btn-soft" href="#rencana" data-close>${ic("route")}Buka Itinerary</a><button class="btn btn-ghost" type="button" data-act="logout">${ic("login")}Keluar</button></div>`);
+
+  /* =========================================================
+     JEMBATAN UNTUK MODUL LAIN (auth/*.js)
+     Modul autentikasi mendaftarkan halaman lewat SM_APP.addView().
+     ========================================================= */
+  const guard = { protected: new Set(), guestOnly: new Set(), after: {} };
+  window.SM_APP = {
+    D, S, store, $, $$, esc, ic, t, rp, toast, openModal, closeModal, replay, pop, placeTabs, afterPaint, media, scene, tempatCard,
+    route, setUser, motionOK,
+    addView(name, render, opts = {}) {
+      V[name] = render;
+      if (opts.protected) guard.protected.add(name);
+      if (opts.guestOnly) guard.guestOnly.add(name);
+      if (opts.after) guard.after[name] = opts.after;
+      if (opts.navKey) guard.navKey = Object.assign(guard.navKey || {}, { [name]: opts.navKey });
     }
-    const mode = ["masuk", "daftar", "lupa"].includes(tab) ? tab : "masuk";
-    const title = { masuk: `${t("nav.login")} ke SobatMusafir`, daftar: "Buat akun SobatMusafir", lupa: "Atur ulang kata sandi" }[mode];
-    openModal(`<h2 id="modalTitle">${title}</h2><p class="muted" style="margin:6px 0 14px">Simpan itinerary & favorit di akun Anda agar bisa dibuka dari perangkat mana pun.</p>
-      ${mode !== "lupa" ? `<div class="tabs" role="tablist" aria-label="Akun" style="margin-bottom:14px"><button class="tab" role="tab" type="button" data-authtab="masuk" aria-selected="${mode === "masuk"}">Masuk</button><button class="tab" role="tab" type="button" data-authtab="daftar" aria-selected="${mode === "daftar"}">Daftar</button></div>` : ""}
-      <form class="form" id="authForm" data-mode="${mode}">
-        <label>Email<input class="input plain" type="email" name="email" required autocomplete="email"></label>
-        ${mode !== "lupa" ? `<label>Kata Sandi<input class="input plain" type="password" name="pw" required minlength="6" autocomplete="${mode === "daftar" ? "new-password" : "current-password"}"></label>` : ""}
-        <button class="btn btn-primary" type="submit">${ic(mode === "lupa" ? "bell" : "login")}${{ masuk: t("nav.login"), daftar: "Daftar", lupa: "Kirim tautan" }[mode]}</button>
-        <p id="authMsg" class="chip" hidden></p>
-        ${mode === "masuk" ? `<button class="link" type="button" data-authtab="lupa">Lupa kata sandi?</button>` : mode === "lupa" ? `<button class="link" type="button" data-authtab="masuk">${ic("back")}Kembali ke Masuk</button>` : ""}
-        ${DB.ready ? "" : `<p class="small muted">Koneksi database belum tersedia di tampilan ini.</p>`}
-      </form>`);
-    $$(".tabs", $("#modalBody")).forEach(placeTabs);
-    setTimeout(() => $("#authForm input")?.focus(), 60);
-  }
-  async function initAuth() {
-    if (!DB.ready) return;
-    DB.onAuth((event, user) => {
-      if (event === "SIGNED_IN" && user && (!S.user || S.user.id !== user.id)) onLogin(user);
-      if (event === "SIGNED_OUT") { S.user = null; renderAuthBtn(); setSync(""); }
-      if (event === "PASSWORD_RECOVERY") openModal(`<h2 id="modalTitle">Buat kata sandi baru</h2><p class="muted" style="margin:6px 0 14px">Masukkan kata sandi baru untuk akun Anda.</p>
-        <form class="form" id="authForm" data-mode="baru"><label>Kata Sandi Baru<input class="input plain" type="password" name="pw" required minlength="6" autocomplete="new-password"></label>
-        <input type="hidden" name="email" value=""><button class="btn btn-primary" type="submit">${ic("check")}Simpan Kata Sandi</button><p id="authMsg" class="chip" hidden></p></form>`);
-    });
-    try { const u = await DB.getUser(); if (u && !S.user) onLogin(u); } catch { /* abaikan */ }
-  }
-  document.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-act=logout]"); if (!b) return;
-    DB.signOut().then(() => { closeModal(); toast("Anda sudah keluar. Data tetap tersimpan di perangkat ini."); });
-  });
+  };
 
   /* ---------- Mulai ---------- */
-  if (S.theme) document.documentElement.dataset.theme = S.theme;
-  $("#year").textContent = nowWIB().y;
-  applyI18n();
-  window.addEventListener("hashchange", route);
-  route();
-  setInterval(tick, 1000);
-  renderAuthBtn();
-  syncContent();
-  initAuth();
+  const boot = () => {
+    if (S.theme) document.documentElement.dataset.theme = S.theme;
+    $("#year").textContent = nowWIB().y;
+    applyI18n();
+    window.addEventListener("hashchange", route);
+    if (window.SM_AUTH) window.SM_AUTH.init(); // cek sesi Supabase sebelum halaman terproteksi dibuka
+    route();
+    setInterval(tick, 1000);
+    syncContent();
+  };
+  // Tunggu semua modul (auth/*.js) selesai dimuat agar halamannya sudah terdaftar
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 }

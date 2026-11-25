@@ -1,19 +1,12 @@
 /* =========================================================
    SobatMusafir Jambi — db.js
-   Lapisan koneksi ke Supabase: baca konten, akun (Auth),
-   favorit & itinerary per pengguna, kirim pendaftaran mitra.
+   Lapisan data Supabase: baca konten, favorit & itinerary per pengguna,
+   kirim pendaftaran mitra. (Autentikasi ada di folder auth/.)
    Jika Supabase tidak terjangkau, website tetap jalan memakai data.js.
    ========================================================= */
 window.SM_DB = (() => {
-  const C = window.SM_CONFIG || {};
-  let sb = null;
-  try {
-    if (window.supabase && C.supabaseUrl && C.supabaseKey) {
-      sb = window.supabase.createClient(C.supabaseUrl, C.supabaseKey, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
-      });
-    }
-  } catch { sb = null; }
+  // Satu klien Supabase untuk seluruh situs, dibuat di auth/supabase-client.js
+  const sb = window.SM_SB || null;
 
   const timeout = (p, ms = 8000) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error("Koneksi ke database terlalu lama")), ms))]);
   const need = () => { if (!sb) throw new Error("Koneksi database belum dikonfigurasi"); return sb; };
@@ -67,20 +60,6 @@ window.SM_DB = (() => {
     };
   }
 
-  /* ---------- Akun ---------- */
-  async function getUser() { if (!sb) return null; const { data } = await sb.auth.getSession(); return data.session ? data.session.user : null; }
-  function onAuth(cb) { if (sb) sb.auth.onAuthStateChange((event, session) => cb(event, session ? session.user : null)); }
-  const redirect = () => location.origin + location.pathname;
-  async function signIn(email, password) { const r = await timeout(need().auth.signInWithPassword({ email, password })); if (r.error) throw r.error; return r.data.user; }
-  async function signUp(email, password) {
-    const r = await timeout(need().auth.signUp({ email, password, options: { emailRedirectTo: redirect() } }));
-    if (r.error) throw r.error;
-    return { user: r.data.user, needsConfirm: !r.data.session };
-  }
-  async function resetPassword(email) { const r = await timeout(need().auth.resetPasswordForEmail(email, { redirectTo: redirect() })); if (r.error) throw r.error; }
-  async function updatePassword(password) { const r = await timeout(need().auth.updateUser({ password })); if (r.error) throw r.error; }
-  async function signOut() { if (sb) await sb.auth.signOut(); }
-
   /* ---------- Favorit ---------- */
   async function getFavs() { return ok(await timeout(need().from("favorit").select("tempat_id"))).map((r) => r.tempat_id); }
   async function addFav(tempatId) { const r = await timeout(need().from("favorit").upsert({ tempat_id: tempatId }, { onConflict: "user_id,tempat_id", ignoreDuplicates: true })); if (r.error) throw r.error; }
@@ -113,5 +92,5 @@ window.SM_DB = (() => {
     return m || "Terjadi kesalahan.";
   }
 
-  return { ready: !!sb, loadContent, getUser, onAuth, signIn, signUp, resetPassword, updatePassword, signOut, getFavs, addFav, delFav, getPlan, savePlan, submitMitra, pesan };
+  return { ready: !!sb, loadContent, getFavs, addFav, delFav, getPlan, savePlan, submitMitra, pesan };
 })();

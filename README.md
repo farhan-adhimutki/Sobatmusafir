@@ -41,10 +41,30 @@ Pendaftaran mitra yang masuk dilihat di tabel `pendaftaran_mitra` (ubah kolom `s
 Cara kerja: website menampilkan data cache/terakhir dulu, lalu mengambil data terbaru dari Supabase di latar.
 Jika database tidak terjangkau (offline), website memakai `data.js`. Status koneksi tampil di footer.
 
-### Akun pengunjung
-Tombol **Masuk** memakai Supabase Auth (email + kata sandi). Favorit & itinerary otomatis tersinkron ke akun.
-Setelah situs online, atur **Authentication → URL Configuration → Site URL** di Supabase ke alamat situs
-(mis. `https://farhan-adhimutki.github.io/Sobatmusafir/`) agar tautan konfirmasi email kembali ke situs.
+## Autentikasi (Supabase Auth)
+
+| Halaman | Fungsi |
+|---|---|
+| `#daftar` | Registrasi: nama lengkap, email, kata sandi (min. 12), konfirmasi → email verifikasi |
+| `#masuk` | Login email + kata sandi; akun belum terverifikasi ditolak, bisa kirim ulang verifikasi |
+| `#lupa-sandi` | Minta tautan reset kata sandi |
+| `#reset-sandi` | Buat kata sandi baru (dibuka dari tautan email) |
+| `#dashboard` | **Terproteksi** — profil, ganti nama & kata sandi, favorit, keluar |
+
+Modul (folder `auth/`): `supabase-client.js` (konfigurasi), `validasi.js`, `session.js`, `ui.js`,
+`register.js`, `login.js`, `recovery.js`, `logout.js`, `dashboard.js`, `nav.js` (tombol akun di header).
+
+Database: `auth.users` (identitas & password ber-hash, dikelola Supabase) + `public.profiles`
+(id, nama_lengkap, created_at, updated_at) yang dibuat otomatis oleh trigger `on_auth_user_created`.
+RLS: pengguna hanya bisa membaca & mengubah profilnya sendiri; hanya kolom `nama_lengkap` yang boleh diubah.
+
+### Pengaturan wajib di Supabase Dashboard (project `sobatmusafir`)
+1. **Authentication → URL Configuration**: isi *Site URL* dengan alamat situs, lalu tambahkan alamat yang sama
+   ke *Redirect URLs* (mis. `https://farhan-adhimutki.github.io/Sobatmusafir/**`).
+2. **Authentication → Sign In / Providers → Email**: *Confirm email* = ON, *Minimum password length* = **12**.
+3. **Authentication → Emails → SMTP Settings**: pasang SMTP sendiri (Brevo/Resend/dll). Tanpa ini Supabase
+   hanya mengirim email ke anggota tim project dan dibatasi beberapa email per jam.
+4. (Opsional) **Authentication → Rate Limits** untuk menyesuaikan batas percobaan.
 
 ## Halaman
 

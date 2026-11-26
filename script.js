@@ -1,7 +1,8 @@
 /* =========================================================
    SobatMusafir Jambi — script.js
    Navigasi halaman (hash), jadwal sholat & kiblat (dihitung),
-   filter/pencarian, itinerary, mode gelap, bahasa ID/EN.
+   filter/pencarian, itinerary, mode gelap, bahasa ID/EN,
+   koneksi Supabase (konten, akun, favorit, itinerary, mitra) lewat db.js.
    ========================================================= */
 {
   const D = window.SM_DATA;
@@ -17,7 +18,13 @@
     get(k, def) { try { const v = localStorage.getItem("sm:" + k); return v == null ? def : JSON.parse(v); } catch { return def; } },
     set(k, v) { try { localStorage.setItem("sm:" + k, JSON.stringify(v)); } catch { /* abaikan */ } }
   };
+  /* Konten terakhir dari database (cache) → tampilan langsung terbaru, lalu diperbarui di latar */
+  const DB = window.SM_DB || { ready: false };
+  const cache = store.get("cache", null);
+  if (cache && cache.data) Object.assign(D, cache.data);
+
   const S = {
+    user: null,
     lang: store.get("lang", "id"),
     theme: store.get("theme", null),
     region: store.get("region", "kota-jambi"),
@@ -764,7 +771,15 @@
   /* ---------- Rencana perjalanan ---------- */
   let dayFilter = 0;
   const sortPlan = () => S.plan.sort((a, b) => a.hari - b.hari || toMin(a.mulai) - toMin(b.mulai));
-  const savePlan = () => { sortPlan(); store.set("plan", S.plan); };
+  let planTimer;
+  const savePlan = () => {
+    sortPlan(); store.set("plan", S.plan);
+    if (S.user && DB.ready) {
+      clearTimeout(planTimer);
+      planTimer = setTimeout(() => DB.savePlan(S.user.id, S.plan).then(() => setSync("tersimpan")).catch((e) => setSync("gagal", e)), 700);
+      setSync("menyimpan");
+    }
+  };
   const nextStop = () => sortPlan().find((s) => !s.selesaiDikunjungi);
   const spots = () => [
     ...D.wisata.filter((w) => !w.linkMasjid).map((w) => ({ key: "w:" + w.id, nama: w.nama, jenis: "wisata", sub: w.ringkas, lat: w.lat, lng: w.lng, tag: ["Ramah Muslim"] })),
@@ -916,25 +931,41 @@
       </section>
     </div>`;
 
+  V["proses-auth"] = () => `<div class="wrap band"><div class="empty" role="status">${ic("shield")}<p><b>Memeriksa sesi Anda…</b></p><span class="small">Mohon tunggu sebentar.</span></div></div>`;
   V.notfound = () => `<div class="wrap band"><div class="empty">${ic("info")}<p>Halaman tidak ditemukan.</p><a class="btn btn-primary" href="#beranda">${t("nav.home")}</a></div></div>`;
 
   /* =========================================================
      ROUTER
      ========================================================= */
   let lastHash = "";
-  function route() {
-    const h = (location.hash || "#beranda").slice(1) || "beranda";
+  function route(opts = {}) {
+    let h = (location.hash || "#beranda").slice(1) || "beranda";
+    const AUTH = window.SM_AUTH;
+    // Kembali dari tautan email Supabase (token/eror di URL) → tunggu diproses auth/session.js
+    if (/access_token=|error_description=|error_code=|type=recovery|type=signup/.test(h) || (AUTH && AUTH.state.processing)) h = "proses-auth";
+    // Halaman khusus pengguna login: tunggu status sesi, lalu arahkan ke halaman Masuk bila belum login
+    if (guard.protected.has(h)) {
+      if (AUTH && !AUTH.state.ready) h = "proses-auth";
+      else if (!AUTH || !AUTH.state.user) {
+        try { sessionStorage.setItem("sm:next", "#" + h); } catch { /* abaikan */ }
+        location.replace("#masuk");
+        return;
+      }
+    }
+    // Halaman Masuk/Daftar tidak perlu dibuka lagi bila sudah login
+    if (guard.guestOnly.has(h) && AUTH && AUTH.state.ready && AUTH.state.user) { location.replace("#dashboard"); return; }
+    const quiet = opts === true || opts.quiet === true;
     let view, arg, navKey, scrollTo;
     if (h.startsWith("tempat-")) { view = "tempat"; arg = h.slice(7); navKey = "guide"; }
     else if (h.startsWith("wisata-")) { view = "wisata"; arg = h.slice(7); navKey = "wisata"; }
     else if (h.startsWith("masjid-")) { view = "masjid"; arg = h.slice(7); navKey = "guide"; }
     else if (h.startsWith("tentang-")) { view = "tentang"; navKey = "tentang"; scrollTo = h; }
     else if (h === "kiblat") { view = "sholat"; navKey = "guide"; scrollTo = "kiblat"; }
-    else if (V[h] && !["tempat", "wisata", "notfound"].includes(h)) { view = h; navKey = ["kuliner", "masjid", "sholat", "hotel"].includes(h) ? "guide" : h; }
+    else if (V[h] && !["tempat", "wisata", "notfound"].includes(h)) { view = h; navKey = (guard.navKey && guard.navKey[h]) || (["kuliner", "masjid", "sholat", "hotel"].includes(h) ? "guide" : h); }
     else if (document.getElementById(h) && app.contains(document.getElementById(h))) { document.getElementById(h).scrollIntoView(); return; }
     else { view = "notfound"; }
 
-    const sameMasjid = view === "masjid" && lastHash.startsWith("masjid") && $("#mside");
+    const sameMasjid = !quiet && view === "masjid" && lastHash.startsWith("masjid") && $("#mside");
     lastHash = h;
     if (sameMasjid) {
       const sel = D.masjid.find((m) => m.id === arg) || D.masjid[0];
@@ -950,21 +981,26 @@
     const token = ++routeToken;
     const paint = () => {
       if (token !== routeToken) return;
+      const keepY = scrollY;
       app.classList.remove("leaving");
-      app.innerHTML = `<div class="view-enter">${V[view](arg)}</div>`;
+      app.classList.toggle("no-anim", quiet);
+      app.innerHTML = `<div class="${quiet ? "" : "view-enter"}">${V[view](arg)}</div>`;
       if (view === "kuliner") drawKuliner();
       if (view === "masjid") drawMasjid(arg || D.masjid[0].id);
       if (view === "hotel") drawHotel();
       if (view === "rencana") drawPlan();
+      if (guard.after[view]) guard.after[view](arg);
       $$("[data-nav]").forEach((a) => a.classList.toggle("is-active", a.dataset.nav === navKey));
       closeMenu();
       document.title = (view === "beranda" ? "SobatMusafir Jambi" : ($("h1", app)?.textContent || "SobatMusafir") + " — SobatMusafir Jambi").slice(0, 80);
-      if (scrollTo && document.getElementById(scrollTo)) setTimeout(() => document.getElementById(scrollTo).scrollIntoView({ behavior: "smooth" }), 60);
+      if (quiet) window.scrollTo({ top: keepY, behavior: "instant" });
+      else if (scrollTo && document.getElementById(scrollTo)) setTimeout(() => document.getElementById(scrollTo).scrollIntoView({ behavior: "smooth" }), 60);
       else window.scrollTo({ top: 0, behavior: "instant" });
       afterPaint(app);
+      if (quiet) { $$(".reveal", app).forEach((el) => el.classList.add("in")); requestAnimationFrame(() => app.classList.remove("no-anim")); }
       tick();
     };
-    if (booted && motionOK() && app.firstElementChild) { app.classList.add("leaving"); setTimeout(paint, 180); }
+    if (booted && !quiet && motionOK() && app.firstElementChild) { app.classList.add("leaving"); setTimeout(paint, 180); }
     else paint();
     booted = true;
   }
@@ -1023,7 +1059,7 @@
     const full = `${text}\n${url}`;
     try { if (navigator.share) { await navigator.share({ title, text, url }); return; } } catch (e) { if (e && e.name === "AbortError") return; }
     try { await navigator.clipboard.writeText(full); toast("Tautan & teks disalin ke clipboard."); return; } catch { /* lanjut ke modal */ }
-    openModal(`<h2 id="modalTitle">${t("share")}</h2><p class="muted" style="margin:8px 0 12px">Salin teks di bawah ini:</p><textarea class="textarea" readonly rows="8" onclick="this.select()">${esc(full)}</textarea>`);
+    openModal(`<h2 id="modalTitle">${t("share")}</h2><p class="muted" style="margin:8px 0 12px">Salin teks di bawah ini:</p><textarea class="textarea" readonly rows="8" data-select>${esc(full)}</textarea>`);
   }
   function planText() {
     sortPlan();
@@ -1036,7 +1072,7 @@
   function closeMenu() { $("#mainnav").classList.remove("open"); $("#menuBtn").setAttribute("aria-expanded", "false"); $$(".dd").forEach((d) => d.classList.remove("open")); }
 
   document.addEventListener("click", async (e) => {
-    const a = e.target.closest("[data-act],[data-close],[data-lang],[data-kcat],[data-kf],[data-mcat],[data-mcatf],[data-hf],[data-day],[data-radius],[data-fac],[data-tab],[data-hotel],[data-lightbox],[data-scroll],.dd-btn,#menuBtn,#themeBtn,#loginBtn,#toTop");
+    const a = e.target.closest("[data-act],[data-close],[data-lang],[data-kcat],[data-kf],[data-mcat],[data-mcatf],[data-hf],[data-day],[data-radius],[data-fac],[data-tab],[data-hotel],[data-lightbox],[data-scroll],.dd-btn,#menuBtn,#themeBtn,#toTop");
     if (!e.target.closest(".dd")) $$(".dd").forEach((d) => d.classList.remove("open"));
     if (!a) return;
     const d = a.dataset;
@@ -1053,14 +1089,7 @@
       a.setAttribute("aria-label", S.theme === "dark" ? "Mode terang" : "Mode gelap");
       return;
     }
-    if (a.id === "loginBtn") {
-      return openModal(`<h2 id="modalTitle">${t("nav.login")} ke SobatMusafir</h2><p class="muted" style="margin:6px 0 16px">Simpan itinerary & favorit lintas perangkat.</p>
-        <form class="form" id="loginForm"><label>Email<input class="input plain" type="email" name="email" required autocomplete="email"></label>
-        <label>Kata Sandi<input class="input plain" type="password" name="pw" required minlength="6" autocomplete="current-password"></label>
-        <button class="btn btn-primary" type="submit">${ic("login")}${t("nav.login")}</button>
-        <p class="small muted">Untuk sekarang itinerary & favorit sudah tersimpan otomatis di browser ini.</p></form>`);
-    }
-    if (d.lang) { S.lang = d.lang; store.set("lang", S.lang); applyI18n(); route(); return; }
+    if (d.lang) { S.lang = d.lang; store.set("lang", S.lang); applyI18n(); window.SM_NAV?.render(); route(); return; }
     if (d.kcat) { KF.cat = d.kcat; $$("[data-kcat]").forEach((b) => b.setAttribute("aria-pressed", String(b === a))); return drawKuliner(); }
     if (d.kf) { KF[d.kf] = !KF[d.kf]; a.setAttribute("aria-pressed", String(KF[d.kf])); return drawKuliner(); }
     if (d.mcat) { menuCat = d.mcat; $$("[data-mcat]").forEach((b) => b.setAttribute("aria-pressed", String(b === a))); const p = D.tempat.find((x) => location.hash === "#tempat-" + x.id); if (p) $("#menuGrid").innerHTML = menuHTML(p); return; }
@@ -1095,7 +1124,8 @@
         a.classList.toggle("btn-primary", on); a.classList.toggle("btn-ghost", !on); a.setAttribute("aria-pressed", String(on));
         a.innerHTML = `${ic("bookmark")}${on ? t("saved") : t("save")}`;
         pop(a);
-        return toast(on ? "Disimpan ke favorit (filter “Tersimpan” di Kuliner)." : "Dihapus dari favorit.");
+        if (S.user && DB.ready) (on ? DB.addFav(d.id) : DB.delFav(d.id)).then(() => setSync("tersimpan")).catch((err) => { setSync("gagal", err); toast("Favorit tersimpan di perangkat, tapi gagal disinkronkan: " + DB.pesan(err)); });
+        return toast(on ? (S.user ? "Disimpan ke favorit akun Anda." : "Disimpan ke favorit. Masuk agar tersimpan di semua perangkat.") : "Dihapus dari favorit.");
       }
       case "share": return shareText(d.title, `${d.title} — SobatMusafir Jambi`);
       case "chime": return chime() ? toast("Memutar nada pengingat…") : toast("Browser ini tidak mendukung pemutaran suara.");
@@ -1239,15 +1269,22 @@
     }
     if (f.id === "mitraForm") {
       const fd = Object.fromEntries(new FormData(f));
-      openModal(`<span class="brand-mark">${ic("check")}</span><h2 id="modalTitle" style="margin-top:12px">Data pendaftaran siap</h2>
-        <p class="muted" style="margin:8px 0 14px">Formulir ini belum terhubung ke server, jadi data belum terkirim ke tim. Salin ringkasan berikut dan kirimkan lewat kanal resmi SobatMusafir.</p>
-        <textarea class="textarea" readonly rows="7" onclick="this.select()">${esc(`Pendaftaran Mitra UMKM SobatMusafir\nUsaha: ${fd.usaha}\nPemilik: ${fd.nama}\nWhatsApp: ${fd.wa}\nJenis: ${fd.jenis}\nWilayah: ${fd.wil}\nSertifikat halal: ${fd.sert || "-"}`)}</textarea>`);
+      const btn = $("button[type=submit]", f);
+      const ringkas = `Pendaftaran Mitra UMKM SobatMusafir\nUsaha: ${fd.usaha}\nPemilik: ${fd.nama}\nWhatsApp: ${fd.wa}\nJenis: ${fd.jenis}\nWilayah: ${fd.wil}\nSertifikat halal: ${fd.sert || "-"}`;
+      btn.disabled = true; btn.innerHTML = `${ic("clock")}Mengirim…`;
+      (DB.ready ? DB.submitMitra(fd) : Promise.reject(new Error("Koneksi database belum dikonfigurasi"))).then(() => {
+        f.reset();
+        openModal(`<span class="brand-mark">${ic("check")}</span><h2 id="modalTitle" style="margin-top:12px">Pendaftaran terkirim</h2>
+          <p class="muted" style="margin-top:8px">Terima kasih, <b>${esc(fd.nama)}</b>. Data <b>${esc(fd.usaha)}</b> sudah masuk ke database SobatMusafir dan akan ditinjau tim. Kami akan menghubungi lewat WhatsApp ${esc(fd.wa)}.</p>`);
+      }).catch((err) => {
+        openModal(`<span class="brand-mark">${ic("info")}</span><h2 id="modalTitle" style="margin-top:12px">Belum terkirim</h2>
+          <p class="muted" style="margin:8px 0 14px">${esc(DB.pesan(err))} Coba lagi nanti, atau salin ringkasan berikut dan kirimkan lewat kanal resmi SobatMusafir.</p>
+          <textarea class="textarea" readonly rows="7" data-select>${esc(ringkas)}</textarea>`);
+      }).finally(() => { btn.disabled = false; btn.innerHTML = `${ic("check")}Kirim Pendaftaran`; });
       return;
     }
-    if (f.id === "loginForm") {
-      $("#modalBody").insertAdjacentHTML("beforeend", `<p class="chip chip-amber" style="margin-top:12px">${ic("info")}Login belum terhubung ke server akun.</p>`);
-    }
   });
+  document.addEventListener("focusin", (e) => { if (e.target.matches("textarea[data-select]")) e.target.select(); });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { if (!$("#modal").hidden) closeModal(); closeMenu(); }
     if (!$("#modal").hidden && $("#lb") && (e.key === "ArrowRight" || e.key === "ArrowLeft")) { e.preventDefault(); lbStep(e.key === "ArrowRight" ? 1 : -1); }
@@ -1410,11 +1447,92 @@
   addEventListener("scroll", () => { if (!scrollQueued) { scrollQueued = true; requestAnimationFrame(onScroll); } }, { passive: true });
   addEventListener("resize", () => $$(".tabs", app).forEach(placeTabs));
 
+  /* =========================================================
+     DATABASE (Supabase) — konten live, akun, sinkronisasi
+     ========================================================= */
+  const dbState = { mode: "lokal", sync: "" };
+  function setDbStatus(mode, err) {
+    dbState.mode = mode;
+    const el = $("#dbStatus"); if (!el) return;
+    const txt = { memuat: "Menghubungkan ke database…", live: "Data langsung dari database Supabase", cache: "Menampilkan data tersimpan terakhir (offline)", lokal: "Mode offline: memakai data bawaan" }[mode];
+    el.innerHTML = `<span class="dot ${mode === "live" ? "" : "off"}"></span> ${txt}${dbState.sync ? ` • ${esc(dbState.sync)}` : ""}`;
+    el.title = err ? DB.pesan(err) : "";
+  }
+  function setSync(state, err) {
+    dbState.sync = { menyimpan: "menyinkronkan…", tersimpan: "tersinkron ke akun", gagal: "sinkron gagal" }[state] || "";
+    setDbStatus(dbState.mode, err);
+  }
+  const snapshot = () => JSON.stringify([D.wilayah, D.wisata, D.tempat, D.masjid, D.hotel, D.itinerary, D.hero]);
+  async function syncContent() {
+    if (!DB.ready) { setDbStatus(cache ? "cache" : "lokal"); return; }
+    setDbStatus("memuat");
+    try {
+      const before = snapshot();
+      const fresh = await DB.loadContent();
+      Object.assign(D, fresh);
+      store.set("cache", { at: Date.now(), data: fresh });
+      if (!store.get("plan", null) && !S.user) S.plan = structuredClone(D.itinerary);
+      setDbStatus("live");
+      if (snapshot() !== before) route({ quiet: true });
+    } catch (e) {
+      setDbStatus(cache ? "cache" : "lokal", e);
+    }
+  }
+
+  /* Sinkron favorit & itinerary saat pengguna masuk/keluar (dipanggil oleh auth/session.js) */
+  async function setUser(user) {
+    const prev = S.user;
+    S.user = user || null;
+    if (!user) {
+      if (prev) {
+        // Bersihkan data pribadi dari perangkat setelah logout (tetap aman tersimpan di akun)
+        S.favs = []; store.set("favs", S.favs);
+        S.plan = structuredClone(D.itinerary); store.set("plan", null);
+      }
+      setSync("");
+      return;
+    }
+    if (prev && prev.id === user.id) return;
+    try {
+      const [remoteFavs, remotePlan] = await Promise.all([DB.getFavs(), DB.getPlan()]);
+      const localOnly = S.favs.filter((id) => !remoteFavs.includes(id));
+      await Promise.all(localOnly.map((id) => DB.addFav(id).catch(() => null)));
+      S.favs = [...new Set([...remoteFavs, ...S.favs])]; store.set("favs", S.favs);
+      if (remotePlan && remotePlan.length) { S.plan = remotePlan; store.set("plan", S.plan); }
+      else await DB.savePlan(user.id, S.plan);
+      setSync("tersimpan");
+      route({ quiet: true });
+    } catch (e) { setSync("gagal", e); }
+  }
+
+  /* =========================================================
+     JEMBATAN UNTUK MODUL LAIN (auth/*.js)
+     Modul autentikasi mendaftarkan halaman lewat SM_APP.addView().
+     ========================================================= */
+  const guard = { protected: new Set(), guestOnly: new Set(), after: {} };
+  window.SM_APP = {
+    D, S, store, $, $$, esc, ic, t, rp, toast, openModal, closeModal, replay, pop, placeTabs, afterPaint, media, scene, tempatCard,
+    route, setUser, motionOK,
+    addView(name, render, opts = {}) {
+      V[name] = render;
+      if (opts.protected) guard.protected.add(name);
+      if (opts.guestOnly) guard.guestOnly.add(name);
+      if (opts.after) guard.after[name] = opts.after;
+      if (opts.navKey) guard.navKey = Object.assign(guard.navKey || {}, { [name]: opts.navKey });
+    }
+  };
+
   /* ---------- Mulai ---------- */
-  if (S.theme) document.documentElement.dataset.theme = S.theme;
-  $("#year").textContent = nowWIB().y;
-  applyI18n();
-  window.addEventListener("hashchange", route);
-  route();
-  setInterval(tick, 1000);
+  const boot = () => {
+    if (S.theme) document.documentElement.dataset.theme = S.theme;
+    $("#year").textContent = nowWIB().y;
+    applyI18n();
+    window.addEventListener("hashchange", route);
+    if (window.SM_AUTH) window.SM_AUTH.init(); // cek sesi Supabase sebelum halaman terproteksi dibuka
+    route();
+    setInterval(tick, 1000);
+    syncContent();
+  };
+  // Tunggu semua modul (auth/*.js) selesai dimuat agar halamannya sudah terdaftar
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 }

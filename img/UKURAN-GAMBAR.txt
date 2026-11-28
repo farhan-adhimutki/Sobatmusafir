@@ -19,6 +19,6 @@ Menu makanan/minuman   4:3     800 x 600 px    menu/<resto>-<menu>.jpg
 Catatan:
 - Banner 12:5 sangat lebar: subjek (gedung/candi/hidangan) taruh di tengah,
   sisakan ruang di kiri-bawah karena judul halaman ditulis di atas area itu.
-- Folder hero/ sengaja kosong: selama beranda.jpg belum ada, beranda memakai
+- Folder hero/ berisi foto Gentala Arasy (beranda.jpg & beranda-mobile.jpg). Jika dihapus, beranda memakai
   ilustrasi bergerak (matahari, awan, perahu, riak sungai).
 - Untuk menambah gambar baru, tulis path-nya di data.js (field img / banner / galeri).

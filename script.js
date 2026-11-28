@@ -42,7 +42,7 @@
       "cat.food": "Kuliner Halal", "cat.mosque": "Musholla & Masjid", "cat.prayer": "Jadwal Sholat & Kiblat", "cat.hotel": "Hotel Syariah", "cat.tour": "Tempat Wisata",
       "foot.about": "Pemandu perjalanan ramah Muslim terpercaya di Bumi Melayu Jambi. Menghubungkan pelancong dengan destinasi bernilai syariah, kuliner halal terkurasi, dan pemberdayaan UMKM lokal.",
       "foot.badge": "Terhubung dengan Standar Halal Kemenag & MUI Jambi", "foot.dest": "Destinasi Jambi", "foot.guide": "Panduan Muslim", "foot.partner": "Kemitraan UMKM", "foot.copy": "Hak Cipta Dilindungi Undang-Undang.",
-      "foot.note": "Foto pada situs ini masih ilustrasi pengganti. Jadwal sholat dihitung otomatis.",
+      "foot.note": "Sebagian foto masih ilustrasi pengganti. Jadwal sholat dihitung otomatis.",
       "hero.eyebrow": "Portal Resmi Wisata Ramah Muslim", "hero.t1": "Tenang Ibadahnya, Yakin Halalnya,", "hero.t2": "Nyaman Wisatanya",
       "hero.lead": "Platform kurasi destinasi ramah Muslim, kuliner halal tersertifikasi, dan penggerak ekonomi UMKM lokal terbaik.",
       "search.ph": "Cari kuliner halal, masjid terdekat, atau tempat wisata...", "search.btn": "Cari", "search.allcat": "Semua Kategori", "search.allreg": "Semua Wilayah",
@@ -65,7 +65,7 @@
       "cat.food": "Halal Food", "cat.mosque": "Prayer Rooms & Mosques", "cat.prayer": "Prayer Times & Qibla", "cat.hotel": "Sharia Hotels", "cat.tour": "Attractions",
       "foot.about": "A trusted Muslim-friendly travel guide to Jambi. Connecting travellers with sharia-friendly destinations, curated halal food, and local small businesses.",
       "foot.badge": "Aligned with Kemenag & MUI Jambi halal standards", "foot.dest": "Jambi Destinations", "foot.guide": "Muslim Guide", "foot.partner": "MSME Partnership", "foot.copy": "All rights reserved.",
-      "foot.note": "Photos on this site are placeholder illustrations. Prayer times are calculated automatically.",
+      "foot.note": "Some photos are still placeholder illustrations. Prayer times are calculated automatically.",
       "hero.eyebrow": "Official Muslim-Friendly Travel Portal", "hero.t1": "Pray in Peace, Eat with Certainty,", "hero.t2": "Travel in Comfort",
       "hero.lead": "Curated Muslim-friendly destinations, certified halal food, and the best of Jambi's local small businesses.",
       "search.ph": "Search halal food, nearby mosques, or attractions...", "search.btn": "Search", "search.allcat": "All Categories", "search.allreg": "All Regions",
@@ -893,6 +893,7 @@
   V.tentang = () => `
     <div class="wrap page-head">
       <nav class="crumb" aria-label="Breadcrumb"><a href="#beranda">${t("nav.home")}</a><span class="sep">/</span><span>${t("nav.about")}</span></nav>
+      <img class="about-logo" src="img/logo/logo-sobatmusafir.png" width="220" height="165" alt="Logo SobatMusafir — Trusted Travel · Verified UMKM">
       <h1>Tentang SobatMusafir Jambi</h1>
       <p>${t("foot.about")}</p>
     </div>
